@@ -1,0 +1,7 @@
+# 这几个文件必须是 LF 结尾，否则在 Windows 上 clone 出来带 CRLF，
+# Git Bash 执行时会报 $'\r': command not found 而静默失效。
+* text=auto
+install.sh text eol=lf
+hooks/prepare-commit-msg text eol=lf
+hooks/gen-commit-msg.py text eol=lf
+hooks/commit-msg.env.example text eol=lf

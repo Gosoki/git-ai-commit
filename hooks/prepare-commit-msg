@@ -11,10 +11,21 @@ esac
 
 HOOK_DIR=$(dirname "$0")
 
+# Windows 上通常没有 python3 这个名字，依次探测
+if command -v python3 >/dev/null 2>&1; then
+    PY=python3
+elif command -v python >/dev/null 2>&1; then
+    PY=python
+elif command -v py >/dev/null 2>&1; then
+    PY="py -3"
+else
+    exit 0
+fi
+
 diff=$(git diff --cached --no-color | head -c 100000)
 [ -n "$diff" ] || exit 0
 
-msg=$(printf '%s' "$diff" | python3 "$HOOK_DIR/gen-commit-msg.py")
+msg=$(printf '%s' "$diff" | $PY "$HOOK_DIR/gen-commit-msg.py")
 
 [ -n "$msg" ] || exit 0
 

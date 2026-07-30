@@ -41,7 +41,22 @@ vi hooks/commit-msg.env         # 填 API_KEY
 rm -rf ~/git-ai-commit          # 想连文件一起删就再来这句
 ```
 
-只依赖 `git`、`python3`（标准库，无需 pip 装任何东西）、`sh`。macOS 和 Linux 通用。
+只依赖 `git`、Python 3（标准库，无需 pip 装任何东西）、`sh`。macOS / Linux / Windows 通用。
+
+### Windows
+
+在 **Git Bash**（Git for Windows 自带）里执行上面的命令即可，钩子由 git 自己用 sh 调起，
+日常在 VSCode 里点提交不需要开终端。
+
+两个已经处理掉的坑：
+
+- **解释器名**：Windows 上一般没有 `python3` 这个名字，钩子会依次探测
+  `python3` → `python` → `py -3`，都没有就静默跳过。
+- **换行符**：仓库带 `.gitattributes`，强制这几个脚本以 LF 检出。
+  否则 `core.autocrlf=true` 会把它们变成 CRLF，Git Bash 执行时报
+  `$'\r': command not found` 并静默失效。
+
+Python 没装的话去 python.org 或 Microsoft Store 装一个，勾上「Add to PATH」。
 
 ## 配置
 
