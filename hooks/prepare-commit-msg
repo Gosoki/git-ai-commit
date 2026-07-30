@@ -1,0 +1,21 @@
+#!/bin/sh
+# 提交时调用第三方 API 根据 staged diff 生成提交消息（配置见 commit-msg.env）。
+# 跳过：已用 -m 给了消息、merge/squash/模板/amend、显式 NO_AI_COMMIT=1、无 staged 改动。
+# 生成失败或超时都静默跳过，绝不阻塞提交。调试加 AI_COMMIT_DEBUG=1。
+
+[ -n "$NO_AI_COMMIT" ] && exit 0
+
+case "$2" in
+    message | merge | squash | template | commit) exit 0 ;;
+esac
+
+HOOK_DIR=$(dirname "$0")
+
+diff=$(git diff --cached --no-color | head -c 100000)
+[ -n "$diff" ] || exit 0
+
+msg=$(printf '%s' "$diff" | python3 "$HOOK_DIR/gen-commit-msg.py")
+
+[ -n "$msg" ] || exit 0
+
+printf '%s\n\n%s\n' "$msg" "$(cat "$1")" >"$1"
