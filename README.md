@@ -34,6 +34,13 @@ cd ~/git-ai-commit
 vi hooks/commit-msg.env         # 填 API_KEY
 ```
 
+卸载：
+
+```bash
+./install.sh --uninstall        # 取消 core.hooksPath，git 回到默认行为
+rm -rf ~/git-ai-commit          # 想连文件一起删就再来这句
+```
+
 只依赖 `git`、`python3`（标准库，无需 pip 装任何东西）、`sh`。macOS 和 Linux 通用。
 
 ## 配置
@@ -48,6 +55,31 @@ vi hooks/commit-msg.env         # 填 API_KEY
 | `API_MODEL` | 模型名，按服务商支持的填 |
 
 值带引号、行尾带注释都能正确解析。
+
+### 多接口故障转移
+
+加编号即可配多个，按数字从小到大依次尝试，前一个挂了（超时、401、限流、服务端报错、
+返回空内容）自动换下一个，第一个成功就返回：
+
+```ini
+API_BASE=https://api.openai.com/v1
+API_KEY=sk-主用
+API_MODEL=gpt-4o-mini
+
+API_BASE_2=https://中转.example.com/v1
+API_KEY_2=sk-备用
+API_MODEL_2=              # 不填就沿用上面的 API_MODEL
+
+API_BASE_3=...
+```
+
+编号不必连续；只填了 `API_BASE_n` 没填对应 `API_KEY_n` 的会被跳过。
+每个接口超时 30 秒。想知道实际用了哪个，跑 `AI_COMMIT_DEBUG=1 git commit`：
+
+```
+API_BASE 失败: <HTTPError 429: 'Too Many Requests'> {"error":{"message":"insufficient_quota"}}
+使用 API_BASE_2 (https://中转.example.com/v1, gpt-4o-mini)
+```
 
 提交消息的风格规则写在 `hooks/gen-commit-msg.py` 的 `RULES` 变量里，想改格式改那儿，改完下次提交立即生效。
 
@@ -65,7 +97,7 @@ vi hooks/commit-msg.env         # 填 API_KEY
 | 这一次 | `git commit -m "自己写的"`，或 `NO_AI_COMMIT=1 git commit` |
 | **停用一段时间** | **改 `hooks/commit-msg.env` 里的 `ENABLED=false`，想用了再改回 `true`** |
 | 某个仓库 | 在该仓库里 `git config core.hooksPath .git/hooks` |
-| 全局关掉 | `git config --global --unset core.hooksPath` |
+| **彻底卸载** | **`./install.sh --uninstall`**，还原 git 默认行为 |
 
 停用状态下提交完全正常，只是不再自动写消息——消息框留空会因为空消息而中止提交，
 自己写一条即可。

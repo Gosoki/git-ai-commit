@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """读 stdin 的 git diff，调用 OpenAI 兼容接口生成提交消息，打印到 stdout。
+配了多个接口时按顺序试，前一个失败就换下一个。
 出任何问题都静默退出（打印空），由钩子决定不改提交消息。
-配置见同目录 commit-msg.env。"""
+配置见同目录 commit-msg.env，调试加 AI_COMMIT_DEBUG=1。"""
 
 import json
 import os
@@ -11,6 +12,7 @@ import urllib.error
 import urllib.request
 
 CONF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "commit-msg.env")
+TIMEOUT = 30
 
 RULES = """根据用户给出的 git diff 写一条提交消息，只输出消息正文，不要解释、不要代码块包裹。
 
@@ -31,6 +33,11 @@ RULES = """根据用户给出的 git diff 写一条提交消息，只输出消�
 🧪test(auth): 补充登录失败分支用例"""
 
 
+def log(*a):
+    if os.environ.get("AI_COMMIT_DEBUG"):
+        print(*a, file=sys.stderr)
+
+
 def load_conf():
     conf = {}
     with open(CONF, encoding="utf-8") as f:
@@ -44,18 +51,33 @@ def load_conf():
     return conf
 
 
-def main():
-    diff = sys.stdin.read()
-    if not diff.strip():
-        return
+def providers(conf):
+    """按 API_BASE、API_BASE_2、API_BASE_3… 的顺序返回接口列表。"""
+    found = set()
+    for key in conf:
+        m = re.match(r"API_BASE(_\d+)?$", key)
+        if m:
+            found.add(m.group(1) or "")
 
-    conf = load_conf()
-    if conf.get("ENABLED", "true").lower() in ("false", "0", "no", "off"):
-        return
+    out = []
+    for sfx in sorted(found, key=lambda s: int(s[1:]) if s else 0):
+        base, key = conf.get("API_BASE" + sfx), conf.get("API_KEY" + sfx)
+        if not base or not key:
+            continue
+        out.append(
+            {
+                "name": "API_BASE" + sfx,
+                "base": base.rstrip("/"),
+                "key": key,
+                "model": conf.get("API_MODEL" + sfx) or conf.get("API_MODEL", "gpt-4o-mini"),
+            }
+        )
+    return out
 
-    base = conf["API_BASE"].rstrip("/")
+
+def ask(p, diff):
     payload = {
-        "model": conf["API_MODEL"],
+        "model": p["model"],
         "messages": [
             {"role": "system", "content": RULES},
             {"role": "user", "content": diff},
@@ -63,26 +85,54 @@ def main():
         "temperature": 0.2,
     }
     req = urllib.request.Request(
-        base + "/chat/completions",
+        p["base"] + "/chat/completions",
         data=json.dumps(payload).encode(),
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + conf["API_KEY"],
+            "Authorization": "Bearer " + p["key"],
         },
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         body = json.load(resp)
 
     msg = body["choices"][0]["message"]["content"].strip()
-    msg = "\n".join(l for l in msg.splitlines() if not l.startswith("```")).strip()
-    print(msg)
+    return "\n".join(l for l in msg.splitlines() if not l.startswith("```")).strip()
+
+
+def main():
+    diff = sys.stdin.read()
+    if not diff.strip():
+        return
+
+    conf = load_conf()
+    if conf.get("ENABLED", "true").lower() in ("false", "0", "no", "off"):
+        log("ENABLED=false，已停用")
+        return
+
+    provs = providers(conf)
+    if not provs:
+        log("没有可用接口：至少要填一组 API_BASE + API_KEY")
+        return
+
+    for p in provs:
+        try:
+            msg = ask(p, diff)
+            if msg:
+                log("使用 %s (%s, %s)" % (p["name"], p["base"], p["model"]))
+                print(msg)
+                return
+            log("%s 返回空内容，换下一个" % p["name"])
+        except Exception as e:
+            detail = ""
+            if isinstance(e, urllib.error.HTTPError):
+                detail = " " + e.read().decode(errors="replace")[:300]
+            log("%s 失败: %r%s" % (p["name"], e, detail))
+
+    log("所有接口都失败了")
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        if os.environ.get("AI_COMMIT_DEBUG"):
-            print("生成失败:", repr(e), file=sys.stderr)
-            if isinstance(e, urllib.error.HTTPError):
-                print(e.read().decode(errors="replace")[:500], file=sys.stderr)
+        log("生成失败:", repr(e))
