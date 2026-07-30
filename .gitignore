@@ -1,2 +1,4 @@
 hooks/commit-msg.env
 hooks/commit-msg.env.bak
+__pycache__/
+*.pyc
