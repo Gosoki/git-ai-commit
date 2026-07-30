@@ -18,7 +18,7 @@ chmod 600 "$ENV"
 
 OLD=$(git config --global --get core.hooksPath || true)
 if [ -n "$OLD" ] && [ "$OLD" != "$HOOKS" ]; then
-    echo "注意：原来的 core.hooksPath 是 $OLD，将被替换"
+    echo "注意：原来的 core.hooksPath 是 ${OLD}，将被替换"
 fi
 git config --global core.hooksPath "$HOOKS"
 
