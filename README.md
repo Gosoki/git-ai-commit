@@ -42,6 +42,7 @@ vi hooks/commit-msg.env         # 填 API_KEY
 
 | 键 | 说明 |
 |---|---|
+| `ENABLED` | 总开关，`false` 即停用自动生成（不填视为开启） |
 | `API_BASE` | 接口地址，填到 `/v1` 为止，脚本自动拼 `/chat/completions` |
 | `API_KEY` | 你的 key |
 | `API_MODEL` | 模型名，按服务商支持的填 |
@@ -62,8 +63,12 @@ vi hooks/commit-msg.env         # 填 API_KEY
 | 场景 | 做法 |
 |---|---|
 | 这一次 | `git commit -m "自己写的"`，或 `NO_AI_COMMIT=1 git commit` |
+| **停用一段时间** | **改 `hooks/commit-msg.env` 里的 `ENABLED=false`，想用了再改回 `true`** |
 | 某个仓库 | 在该仓库里 `git config core.hooksPath .git/hooks` |
 | 全局关掉 | `git config --global --unset core.hooksPath` |
+
+停用状态下提交完全正常，只是不再自动写消息——消息框留空会因为空消息而中止提交，
+自己写一条即可。
 
 ## 排查
 

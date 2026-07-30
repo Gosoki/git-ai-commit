@@ -50,6 +50,9 @@ def main():
         return
 
     conf = load_conf()
+    if conf.get("ENABLED", "true").lower() in ("false", "0", "no", "off"):
+        return
+
     base = conf["API_BASE"].rstrip("/")
     payload = {
         "model": conf["API_MODEL"],
