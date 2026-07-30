@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """读 stdin 的 git diff，调用 OpenAI 兼容接口生成提交消息，打印到 stdout。
-配了多个接口时按顺序试，前一个失败就换下一个。
+配了多个接口时按配置文件里从上到下的顺序试，前一个失败就换下一个。
 出任何问题都静默退出（打印空），由钩子决定不改提交消息。
 配置见同目录 commit-msg.env，调试加 AI_COMMIT_DEBUG=1。"""
 
+import configparser
 import json
 import os
-import re
 import sys
 import urllib.error
 import urllib.request
@@ -39,37 +39,29 @@ def log(*a):
 
 
 def load_conf():
-    conf = {}
-    with open(CONF, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            v = re.sub(r"\s+#.*$", "", v.strip())  # 容忍行尾注释
-            conf[k.strip()] = v.strip().strip("'\"")  # 容忍引号
-    return conf
+    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
+    cp.read(CONF, encoding="utf-8")
+    return cp
 
 
-def providers(conf):
-    """按 API_BASE、API_BASE_2、API_BASE_3… 的顺序返回接口列表。"""
-    found = set()
-    for key in conf:
-        m = re.match(r"API_BASE(_\d+)?$", key)
-        if m:
-            found.add(m.group(1) or "")
-
+def providers(cp):
+    """[global] 之外的每个段落就是一个接口，按文件里的先后顺序返回。"""
+    default_model = cp.get("global", "model", fallback="gpt-4o-mini")
     out = []
-    for sfx in sorted(found, key=lambda s: int(s[1:]) if s else 0):
-        base, key = conf.get("API_BASE" + sfx), conf.get("API_KEY" + sfx)
+    for name in cp.sections():
+        if name == "global":
+            continue
+        base = cp.get(name, "base", fallback="").strip().strip("'\"")
+        key = cp.get(name, "key", fallback="").strip().strip("'\"")
         if not base or not key:
+            log("[%s] 缺 base 或 key，跳过" % name)
             continue
         out.append(
             {
-                "name": "API_BASE" + sfx,
+                "name": name,
                 "base": base.rstrip("/"),
                 "key": key,
-                "model": conf.get("API_MODEL" + sfx) or conf.get("API_MODEL", "gpt-4o-mini"),
+                "model": cp.get(name, "model", fallback="").strip() or default_model,
             }
         )
     return out
@@ -104,29 +96,29 @@ def main():
     if not diff.strip():
         return
 
-    conf = load_conf()
-    if conf.get("ENABLED", "true").lower() in ("false", "0", "no", "off"):
-        log("ENABLED=false，已停用")
+    cp = load_conf()
+    if not cp.getboolean("global", "enabled", fallback=True):
+        log("enabled = false，已停用")
         return
 
-    provs = providers(conf)
+    provs = providers(cp)
     if not provs:
-        log("没有可用接口：至少要填一组 API_BASE + API_KEY")
+        log("没有可用接口：至少要有一个段落同时填了 base 和 key")
         return
 
     for p in provs:
         try:
             msg = ask(p, diff)
             if msg:
-                log("使用 %s (%s, %s)" % (p["name"], p["base"], p["model"]))
+                log("使用 [%s] (%s, %s)" % (p["name"], p["base"], p["model"]))
                 print(msg)
                 return
-            log("%s 返回空内容，换下一个" % p["name"])
+            log("[%s] 返回空内容，换下一个" % p["name"])
         except Exception as e:
             detail = ""
             if isinstance(e, urllib.error.HTTPError):
                 detail = " " + e.read().decode(errors="replace")[:300]
-            log("%s 失败: %r%s" % (p["name"], e, detail))
+            log("[%s] 失败: %r%s" % (p["name"], e, detail))
 
     log("所有接口都失败了")
 

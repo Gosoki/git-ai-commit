@@ -47,38 +47,39 @@ rm -rf ~/git-ai-commit          # 想连文件一起删就再来这句
 
 `hooks/commit-msg.env`（已被 .gitignore 忽略，不会误传上去）：
 
-| 键 | 说明 |
-|---|---|
-| `ENABLED` | 总开关，`false` 即停用自动生成（不填视为开启） |
-| `API_BASE` | 接口地址，填到 `/v1` 为止，脚本自动拼 `/chat/completions` |
-| `API_KEY` | 你的 key |
-| `API_MODEL` | 模型名，按服务商支持的填 |
+标准 INI 格式，`[global]` 放全局设置，其余**每个段落就是一个接口**：
 
-值带引号、行尾带注释都能正确解析。
+```ini
+[global]
+enabled = true          # 总开关，false 即停用（不填视为开启）
+model = gpt-4o-mini     # 各接口没单独写 model 时用这个
+
+[openai]
+base = https://api.openai.com/v1    # 填到 /v1 为止，脚本自动拼 /chat/completions
+key = sk-主用
+model = gpt-4o-mini
+
+[中转]
+base = https://xxx.example.com/v1
+key = sk-备用
+model =                  # 留空就用 [global] 里的
+```
+
+段落名随便起，只用来在调试日志里标识。值带引号、行尾带 `#` 注释都能正确解析。
 
 ### 多接口故障转移
 
-加编号即可配多个，按数字从小到大依次尝试，前一个挂了（超时、401、限流、服务端报错、
-返回空内容）自动换下一个，第一个成功就返回：
+**按文件里从上到下的顺序试**，前一个挂了（超时、401、限流、服务端报错、返回空内容）
+自动换下一个，第一个成功就返回，后面的不会白跑。想调整优先级就调整段落顺序。
 
-```ini
-API_BASE=https://api.openai.com/v1
-API_KEY=sk-主用
-API_MODEL=gpt-4o-mini
+没填 `key` 的段落直接跳过，所以备用接口可以先留空占位。每个接口超时 30 秒。
 
-API_BASE_2=https://中转.example.com/v1
-API_KEY_2=sk-备用
-API_MODEL_2=              # 不填就沿用上面的 API_MODEL
-
-API_BASE_3=...
-```
-
-编号不必连续；只填了 `API_BASE_n` 没填对应 `API_KEY_n` 的会被跳过。
-每个接口超时 30 秒。想知道实际用了哪个，跑 `AI_COMMIT_DEBUG=1 git commit`：
+想知道实际走了哪条，跑 `AI_COMMIT_DEBUG=1 git commit`：
 
 ```
-API_BASE 失败: <HTTPError 429: 'Too Many Requests'> {"error":{"message":"insufficient_quota"}}
-使用 API_BASE_2 (https://中转.example.com/v1, gpt-4o-mini)
+[没填key的] 缺 base 或 key，跳过
+[主用] 失败: <HTTPError 429: 'Too Many Requests'> {"error":{"message":"insufficient_quota"}}
+使用 [中转] (https://xxx.example.com/v1, 中转模型)
 ```
 
 提交消息的风格规则写在 `hooks/gen-commit-msg.py` 的 `RULES` 变量里，想改格式改那儿，改完下次提交立即生效。
