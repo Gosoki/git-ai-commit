@@ -26,7 +26,7 @@ RULES = """根据用户给出的 git diff 写一条提交消息，只输出消�
 6. 描述每行 50 字以内，说清改了什么，不写「修复bug」这类模糊表述。
 
 多文件改动示例：
-♻️refactor(auth): 重构登录链路并补齐测试
+♻️refactor(aut,xx,yy,zz): 重构登录链路并补齐测试
 
 ✨feat(auth,api): 新增短信验证码登录接口
 🐛fix(session): 修复 token 过期后未清理缓存
